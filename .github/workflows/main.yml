@@ -1,0 +1,64 @@
+name: DEVXRDP – Persistent & Auto-Stop (5 Hours)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ts_authkey:
+        description: "Tailscale Auth Key"
+        required: true
+        type: string
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 305
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore Session Data
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\Users\DEVXRDP\AppData\Local
+            C:\Users\DEVXRDP\AppData\Roaming
+            C:\Users\DEVXRDP\Downloads
+            C:\PersistentData
+          key: rdp-session-v2-${{ github.run_id }}
+          restore-keys: |
+            rdp-session-v2-
+
+      - name: Start Tailscale
+        run: |
+          $exe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+          if (-not (Test-Path $exe)) {
+            Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "$env:TEMP\tailscale.msi"
+            Start-Process msiexec.exe -Wait -ArgumentList "/i","$env:TEMP\tailscale.msi","/quiet","/norestart"
+          }
+          & $exe up --authkey "${{ inputs.ts_authkey }}" --hostname "DEVXRDP" --accept-dns=false
+
+      - name: Setup Windows User
+        run: |
+          $sec = ConvertTo-SecureString "Rdp!9Xq#2025" -AsPlainText -Force
+          if (-not (Get-LocalUser -Name "DEVXRDP" -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name "DEVXRDP" -Password $sec -AccountNeverExpires
+            Add-LocalGroupMember Administrators "DEVXRDP"
+          }
+          $folders = @("C:\PersistentData", "C:\Users\DEVXRDP\Downloads")
+          foreach ($f in $folders) { if (-not (Test-Path $f)) { New-Item -Path $f -ItemType Directory -Force } }
+          Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: RDP Active & Auto-Stop Timer
+        run: |
+          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1
+          Write-Host "IP: $ip"
+          Write-Host "User: DEVXRDP | Pass: Rdp!9Xq#2025"
+          $totalSeconds = 18000
+          $start = Get-Date
+          while ((Get-Date) -lt $start.AddSeconds($totalSeconds)) {
+            $timeLeft = $start.AddSeconds($totalSeconds) - (Get-Date)
+            Write-Host "Time Remaining: $($timeLeft.Hours)h $($timeLeft.Minutes)m"
+            Start-Sleep -Seconds 300 
+          }
