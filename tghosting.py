@@ -1995,7 +1995,7 @@ async def cmd_stats(message: types.Message):
 ╔═══════════════════════╗
     📊 <b>YOUR STATISTICS</b> 📊
 ╚═══════════════════════╝
-
+ 
 <b>👤 USER INFO:</b>
 
 🆔 User ID: <code>{user_id}</code>
